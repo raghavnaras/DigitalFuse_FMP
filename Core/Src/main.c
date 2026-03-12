@@ -22,9 +22,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "main.h"
+#include "adc_utils.h"
+#include "signal_analysis.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +62,8 @@ UART_HandleTypeDef huart2;
 #define DAC_MAX 4095
 uint16_t chirp_buf[CHIRP_SAMPLES];
 uint32_t adc_buf[CHIRP_SAMPLES];
+float float_buf[CHIRP_SAMPLES]; 
+static uint8_t baseline_set = 0;
 volatile uint8_t adc_capture_done = 0;
 /* USER CODE END PV */
 
@@ -141,15 +146,26 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      if (adc_capture_done) {
-          adc_capture_done = 0;
-          char msg[32];
-          for (int i = 0; i < 1000; i++) {
-              sprintf(msg, "%lu\r\n", adc_buf[i]);
-              HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-          }
-      }
-      HAL_Delay(10);
+    if (adc_capture_done) {
+        adc_capture_done = 0;
+
+		// Convert the contents of adc_buf into a float buffer
+		adc_buf_to_float(adc_buf, float_buf, CHIRP_SAMPLES);
+
+		if (!baseline_set) {
+			signal_set_baseline(float_buf, CHIRP_SAMPLES);
+			baseline_set = 1;
+		} else {
+      // Calculate rmse 
+			float rmse = signal_compute_rmse(float_buf, CHIRP_SAMPLES);
+
+      // Log rmse
+			char msg[64];
+			sprintf(msg, "RMSE: %.6f\r\n", rmse);
+			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+		}
+    }
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
