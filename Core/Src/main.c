@@ -24,6 +24,7 @@
 #include "main.h"
 #include "adc_utils.h"
 #include "signal_analysis.h"
+#include "fault_classifier.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -133,6 +134,15 @@ int main(void)
   MX_TIM6_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  // Test LEDs on startup
+  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
+  HAL_Delay(1000);  // Green on for 1 second
+  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
+  HAL_Delay(1000);  // Red on for 1 second
+  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+
+  // Now start the system
   __HAL_TIM_SET_AUTORELOAD(&htim6, 167);
   __HAL_TIM_SET_AUTORELOAD(&htim3, 167);
   generate_chirp();
@@ -149,23 +159,50 @@ int main(void)
     if (adc_capture_done) {
         adc_capture_done = 0;
 
-		// Convert the contents of adc_buf into a float buffer
-		adc_buf_to_float(adc_buf, float_buf, CHIRP_SAMPLES);
+        // Convert the contents of adc_buf into a float buffer
+        adc_buf_to_float(adc_buf, float_buf, CHIRP_SAMPLES);
 
-		if (!baseline_set) {
-			signal_set_baseline(float_buf, CHIRP_SAMPLES);
-			baseline_set = 1;
-		} else {
-      // Calculate rmse 
-			float rmse = signal_compute_rmse(float_buf, CHIRP_SAMPLES);
+        if (!baseline_set) {
+            signal_set_baseline(float_buf, CHIRP_SAMPLES);
+            baseline_set = 1;
+        } else {
+            // Calculate rmse 
+            float rmse = signal_compute_rmse(float_buf, CHIRP_SAMPLES);
+            
+            // Classify fault state
+            FaultState_t fault_state = classifier_evaluate(rmse);
 
-      // Log rmse
-			char msg[64];
-			sprintf(msg, "RMSE: %.6f\r\n", rmse);
-			HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
-		}
+            // Control LEDs based on fault state
+            if (fault_state == STATE_HEALTHY) {
+                HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);   // Green ON
+                HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);     // Red OFF
+            } else {
+                HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET); // Green OFF
+                HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);       // Red ON
+            }
+            
+            // Determine status string
+            const char* status;
+            if (fault_state == STATE_HEALTHY) {
+                status = "HEALTHY";
+            } else if (fault_state == STATE_WARNING) {
+                status = "WARNING";
+            } else if (fault_state == STATE_FAULT_SOFT) {
+                status = "SOFT FAULT";
+            } else {
+                status = "HARD FAULT";
+            }
+            
+            // Log rmse and status
+            char msg[128];
+            sprintf(msg, "RMSE: %.6f | Status: %s\r\n", rmse, status);
+            HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 100);
+        }
     }
     HAL_Delay(10);
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -465,7 +502,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|LED_GREEN_Pin|LED_RED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -473,12 +510,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : LD2_Pin LED_GREEN_Pin LED_RED_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin|LED_GREEN_Pin|LED_RED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
