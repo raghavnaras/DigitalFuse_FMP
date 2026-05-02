@@ -135,12 +135,13 @@ int main(void)
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   // Test LEDs on startup
-  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
-  HAL_Delay(1000);  // Green on for 1 second
-  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
-  HAL_Delay(1000);  // Red on for 1 second
-  HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+  // Toggle green
+  HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+  HAL_Delay(1000);
+
+  // Toggle red (note correct port)
+  HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+  HAL_Delay(1000);
 
   // Now start the system
   __HAL_TIM_SET_AUTORELOAD(&htim6, 167);
